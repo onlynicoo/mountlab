@@ -20,8 +20,8 @@ import {
   getAssemblyObjectClass,
   getHostPlacement,
 } from '../config/assemblyObjects'
+import { API_BASE, absoluteApiUrl, projectFileUrl } from '../config/apiBase'
 
-const API_BASE = 'http://127.0.0.1:3001'
 const DIRECT_TYPES = new Map([
   ['stl', 'stl'],
   ['gltf', 'gltf'],
@@ -43,11 +43,6 @@ const HOLE_DEDUPLICATION_TOLERANCE = 0.75
 function extensionFor(filePath) {
   const match = filePath.toLowerCase().match(/\.([a-z0-9]+)$/)
   return match?.[1] || ''
-}
-
-function absoluteApiUrl(url) {
-  if (url.startsWith('http')) return url
-  return `${API_BASE}${url}`
 }
 
 function versionedUrl(url, version = Date.now()) {
@@ -112,10 +107,11 @@ async function resolveModel(filePath) {
   if (trimmedPath.startsWith('/projects/') || trimmedPath.startsWith('/models/')) {
     const type = DIRECT_TYPES.get(extension)
     if (type) {
+      const baseUrl = projectFileUrl(trimmedPath)
       return {
-        baseUrl: trimmedPath,
+        baseUrl,
         type,
-        url: versionedUrl(trimmedPath),
+        url: versionedUrl(baseUrl),
       }
     }
   }
@@ -420,7 +416,7 @@ function createStaticPcb(filePath) {
   const type = DIRECT_TYPES.get(extension)
   if (!type) return null
   const isPublicPath = filePath.startsWith('/projects/') || filePath.startsWith('/models/')
-  const baseUrl = isPublicPath ? filePath : directModelUrl(filePath, type)
+  const baseUrl = isPublicPath ? projectFileUrl(filePath) : directModelUrl(filePath, type)
 
   return {
     id: pcbIdFor(filePath),
@@ -446,7 +442,7 @@ function createImportedChassisComponentForHost(filePath, hostId) {
   const definition = CHASSIS_PART_DEFINITIONS.find((candidate) => candidate.id === hostId)
   if (!definition) return null
   const renderPath = filePath.startsWith('/projects/') || filePath.startsWith('/models/')
-    ? filePath
+    ? projectFileUrl(filePath)
     : versionedUrl(directModelUrl(filePath, 'stl'))
 
   return {

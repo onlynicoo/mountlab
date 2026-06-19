@@ -3,6 +3,7 @@ import { useAssembly } from './hooks/useAssembly'
 import Viewer3D from './components/Viewer3D'
 import drillingLoadingSvg from './assets/drilling-loading.svg'
 import { ASSEMBLY_OBJECT_CLASSES } from './config/assemblyObjects'
+import { API_BASE, absoluteApiUrl } from './config/apiBase'
 import {
   DEFAULT_RACK_PRESET_ID,
   HALF_RACK_WIDTH_MM,
@@ -13,16 +14,8 @@ import {
   rackHeightForUnits,
 } from './config/rackPresets'
 
-const API_BASE = 'http://127.0.0.1:3001'
-
 function basename(filePath) {
   return filePath?.split('/').filter(Boolean).pop() || 'Component'
-}
-
-function absoluteApiUrl(url) {
-  if (!url) return ''
-  if (url.startsWith('http')) return url
-  return `${API_BASE}${url}`
 }
 
 const COLOR_PRESETS = [

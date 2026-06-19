@@ -1,8 +1,7 @@
 import { useLayoutEffect } from 'react'
 import { useLoader } from '@react-three/fiber'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
-
-const API_BASE = 'http://127.0.0.1:3001'
+import { API_BASE, projectFileUrl } from '../config/apiBase'
 
 function normalizeOpacity(opacity) {
   const number = Number(opacity)
@@ -13,7 +12,7 @@ function normalizeOpacity(opacity) {
 export default function AssemblyModel({ path, material, visible, opacity = 1 }) {
   const modelPath = path?.startsWith('/') && !path.startsWith('/projects/') && !path.startsWith('/models/')
     ? `${API_BASE}/api/model?${new URLSearchParams({ path, type: 'stl' }).toString()}`
-    : path
+    : projectFileUrl(path)
   const geometry = useLoader(STLLoader, modelPath)
   const resolvedOpacity = normalizeOpacity(opacity)
 
