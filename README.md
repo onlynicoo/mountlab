@@ -11,6 +11,22 @@ npm run dev
 
 The frontend runs on `localhost:5173`; the backend model server runs on `localhost:3001`.
 
+## Desktop app
+
+MountLab can also run inside Electron. The Electron main process starts the Express backend on a private loopback port, injects that API URL into the renderer, and stores user data under Electron's per-user app-data directory.
+
+```bash
+npm run electron:dev
+```
+
+Build the Vite bundle and package the desktop app with:
+
+```bash
+npm run electron:build
+```
+
+Saved projects, scratch workspaces, conversion cache, and `positions.json` move under `MOUNTLAB_DATA_DIR` when that environment variable is set. Electron sets it to `app.getPath('userData')`; plain `npm run dev` keeps the previous development defaults.
+
 ## Project folders
 
 Project folders imported from the viewer should live under `public/projects/<project-name>/`, so Vite can serve the files as static assets. Put chassis STL parts and PCB exports inside that folder:

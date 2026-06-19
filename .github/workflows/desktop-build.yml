@@ -1,0 +1,44 @@
+name: Desktop Build
+
+on:
+  push:
+    branches:
+      - main
+      - desktop-migration-electron
+  pull_request:
+
+jobs:
+  package:
+    name: Package desktop app (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Package desktop app
+        run: npm run electron:build
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: mountlab-${{ matrix.os }}
+          path: release/**
