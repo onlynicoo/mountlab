@@ -2,7 +2,6 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Canvas, useThree } from '@react-three/fiber'
 import {
   ContactShadows,
-  Environment,
   OrbitControls,
 } from '@react-three/drei'
 import * as THREE from 'three'
@@ -454,7 +453,6 @@ function SceneContents({
 
   return (
     <>
-      <Environment preset="studio" />
       <ambientLight intensity={0.4} />
       <directionalLight
         position={[2, 4, 2]}
