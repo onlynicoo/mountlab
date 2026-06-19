@@ -82,6 +82,10 @@ export const CHASSIS_COMPONENTS = CHASSIS_PART_DEFINITIONS.map((definition) => (
   id: definition.id,
   label: definition.label,
   path: `/models/chassis/${definition.fileName}`,
+  sourcePath: `/models/chassis/${definition.fileName}`,
+  drilledPath: null,
+  drillState: 'source',
+  drilledAt: null,
   material: materialFromPreset(definition.materialPreset),
   visible: definition.visible,
   locked: definition.locked,
@@ -94,6 +98,33 @@ export function createDefaultChassisComponents() {
   return CHASSIS_COMPONENTS.map((component) => ({
     ...component,
     material: { ...component.material },
+  }))
+}
+
+export function createGeneratedChassisComponents(dimensions, options = {}) {
+  const panelThickness = Number(options.panelThickness) || 3
+  const presetId = options.presetId || 'custom'
+
+  return CHASSIS_PART_DEFINITIONS.map((definition) => ({
+    id: definition.id,
+    label: definition.label,
+    path: null,
+    sourcePath: null,
+    drilledPath: null,
+    drillState: 'generated',
+    drilledAt: null,
+    generated: {
+      kind: definition.id,
+      presetId,
+      panelThickness,
+      dimensions: { ...dimensions },
+    },
+    material: materialFromPreset(definition.materialPreset),
+    visible: definition.visible,
+    locked: definition.locked,
+    opacity: definition.id === 'body' ? 0.22 : definition.opacity,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
   }))
 }
 

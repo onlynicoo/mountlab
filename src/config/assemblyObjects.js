@@ -8,8 +8,14 @@ export const ASSEMBLY_OBJECT_CLASSES = [
   {
     id: 'knob',
     label: 'Knob',
-    material: { color: '#c9920a', metalness: 0.45, roughness: 0.35 },
-    params: { diameter: 18, depth: 12 },
+    material: { color: '#18181b', metalness: 0.35, roughness: 0.42 },
+    params: {
+      diameter: 18,
+      depth: 12,
+      skirtDiameter: 22,
+      pointerLength: 8,
+      pointerColor: '#f4f1de',
+    },
   },
   {
     id: 'generic',
@@ -27,10 +33,20 @@ export const HOST_PLACEMENT_PRESETS = {
     rotation: [0, 0, 0],
     normal: [0, 0, 1],
   },
+  rackmount: {
+    position: [0, 0, 1.5],
+    rotation: [0, 0, 0],
+    normal: [0, 0, 1],
+  },
   back_panel: {
     position: [0, 0, -1.5],
     rotation: [0, Math.PI, 0],
     normal: [0, 0, -1],
+  },
+  body: {
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    normal: [0, 0, 1],
   },
 }
 
@@ -50,7 +66,7 @@ export function getHostPlacement(hostId, dimensions = null) {
 
   if (!depth) return preset
 
-  if (hostId === 'front_panel') {
+  if (hostId === 'front_panel' || hostId === 'rackmount') {
     return {
       ...preset,
       position: [0, 0, depth / 2],
