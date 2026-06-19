@@ -13,6 +13,8 @@ dist-ssr
 *.local
 server/converted/
 server/positions.json
+__pycache__/
+*.pyc
 public/projects/*
 !public/projects/.gitkeep
 
