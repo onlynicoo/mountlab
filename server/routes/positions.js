@@ -1,13 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { fileURLToPath } from 'node:url'
 import { Router } from 'express'
 import { httpError } from '../lib/errors.js'
+import { positionsPath } from '../lib/appPaths.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const positionsPath = path.resolve(__dirname, '..', 'positions.json')
 const router = Router()
 
 const DEFAULT_CHASSIS_COMPONENTS = [
@@ -304,6 +301,7 @@ router.post('/positions', async (req, res, next) => {
       assemblyMeta,
     )
 
+    await fs.mkdir(path.dirname(positionsPath), { recursive: true })
     await fs.writeFile(positionsPath, `${JSON.stringify(normalizedPayload, null, 2)}\n`, 'utf8')
     res.json({ status: 'saved' })
   } catch (error) {

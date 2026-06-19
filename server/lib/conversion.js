@@ -1,15 +1,11 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { httpError } from './errors.js'
+import { convertedDir, serverScriptPath } from './appPaths.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const serverDir = path.resolve(__dirname, '..')
-const convertedDir = path.join(serverDir, 'converted')
-const convertScript = path.join(serverDir, 'convert.py')
+const convertScript = serverScriptPath('convert.py')
 
 export async function ensureConvertedDir() {
   await fs.mkdir(convertedDir, { recursive: true })

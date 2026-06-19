@@ -16,7 +16,12 @@ const host = process.env.SERVER_HOST || '127.0.0.1'
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || /^http:\/\/(localhost|127\.0\.0\.1):517\d$/.test(origin)) {
+    if (
+      !origin
+      || origin === 'null'
+      || origin.startsWith('file://')
+      || /^http:\/\/(localhost|127\.0\.0\.1):517\d$/.test(origin)
+    ) {
       callback(null, true)
       return
     }
@@ -41,7 +46,13 @@ app.use(sendError)
 await ensureConvertedDir()
 
 const server = app.listen(port, host, () => {
-  console.log(`Assembly viewer server listening on http://${host}:${port}`)
+  const address = server.address()
+  const actualPort = typeof address === 'object' && address ? address.port : port
+  const apiBase = `http://${host}:${actualPort}`
+  console.log(`Assembly viewer server listening on ${apiBase}`)
+  if (process.send) {
+    process.send({ type: 'mountlab-server-ready', port: actualPort, host, apiBase })
+  }
 })
 
 server.on('error', (error) => {

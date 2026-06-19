@@ -1,17 +1,17 @@
 import fs from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { httpError } from './errors.js'
 import { resolveDrillableModel } from './drill.js'
+import { serverScriptPath } from './appPaths.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const serverDir = path.resolve(__dirname, '..')
-const exportScript = path.join(serverDir, 'export.py')
+const exportScript = serverScriptPath('export.py')
 const defaultFreeCadCommands = [
   process.env.FREECAD_CMD,
+  'C:\\Program Files\\FreeCAD 1.0\\bin\\FreeCADCmd.exe',
+  'C:\\Program Files\\FreeCAD 0.21\\bin\\FreeCADCmd.exe',
+  'C:\\Program Files\\FreeCAD 0.20\\bin\\FreeCADCmd.exe',
   '/Applications/FreeCAD.app/Contents/Resources/bin/python',
   'FreeCADCmd',
   'freecadcmd',

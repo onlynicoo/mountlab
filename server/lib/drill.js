@@ -2,19 +2,22 @@ import fs from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { httpError } from './errors.js'
 import { getModelType, validateModelPath } from './paths.js'
+import {
+  isInside,
+  publicDir,
+  savedProjectsRoot,
+  serverScriptPath,
+} from './appPaths.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const serverDir = path.resolve(__dirname, '..')
-const projectRoot = path.resolve(serverDir, '..')
-const publicDir = path.join(projectRoot, 'public')
-const drillScript = path.join(serverDir, 'drill.py')
+const drillScript = serverScriptPath('drill.py')
 const defaultFreeCadCommands = [
   process.env.FREECAD_CMD,
+  'C:\\Program Files\\FreeCAD 1.0\\bin\\FreeCADCmd.exe',
+  'C:\\Program Files\\FreeCAD 0.21\\bin\\FreeCADCmd.exe',
+  'C:\\Program Files\\FreeCAD 0.20\\bin\\FreeCADCmd.exe',
   '/Applications/FreeCAD.app/Contents/Resources/bin/python',
   'FreeCADCmd',
   'freecadcmd',
@@ -28,12 +31,12 @@ function hasTraversalSegment(rawPath) {
   return rawPath.split(/[\\/]+/).includes('..')
 }
 
-function isInside(parent, child) {
-  const relativePath = path.relative(parent, child)
-  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
-}
-
 function publicUrlFor(filePath) {
+  const projectRelativePath = path.relative(savedProjectsRoot, filePath)
+  if (!projectRelativePath.startsWith('..') && !path.isAbsolute(projectRelativePath)) {
+    return `/projects/${projectRelativePath.split(path.sep).join('/')}`
+  }
+
   const relativePath = path.relative(publicDir, filePath)
   if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return null
   return `/${relativePath.split(path.sep).join('/')}`
@@ -42,6 +45,22 @@ function publicUrlFor(filePath) {
 function isPublicAssetPath(rawPath) {
   return rawPath.startsWith('/projects/')
     || rawPath.startsWith('/models/')
+}
+
+function publicAssetPath(rawPath) {
+  if (rawPath.startsWith('/projects/')) {
+    return {
+      filePath: path.resolve(savedProjectsRoot, rawPath.slice('/projects/'.length)),
+      root: savedProjectsRoot,
+      rootLabel: 'saved projects folder',
+    }
+  }
+
+  return {
+    filePath: path.resolve(publicDir, rawPath.slice(1)),
+    root: publicDir,
+    rootLabel: 'public/',
+  }
 }
 
 function modelPathFromApiUrl(rawPath) {
@@ -69,9 +88,9 @@ export async function resolveDrillableModel(rawPath) {
   const cleanPath = requestedPath.split('?')[0]
 
   if (isPublicAssetPath(cleanPath)) {
-    const filePath = path.resolve(publicDir, cleanPath.slice(1))
-    if (!isInside(publicDir, filePath)) {
-      throw httpError(403, 'Static drill path must be inside public/.')
+    const { filePath, root, rootLabel } = publicAssetPath(cleanPath)
+    if (!isInside(root, filePath)) {
+      throw httpError(403, `Static drill path must be inside ${rootLabel}.`)
     }
 
     if (getModelType(filePath) !== 'stl') {
@@ -107,9 +126,9 @@ export async function resolveDrillableModel(rawPath) {
     throw httpError(400, 'Static drill paths must start with /.')
   }
 
-  const filePath = path.resolve(publicDir, cleanPath.slice(1))
-  if (!isInside(publicDir, filePath)) {
-    throw httpError(403, 'Static drill path must be inside public/.')
+  const { filePath, root, rootLabel } = publicAssetPath(cleanPath)
+  if (!isInside(root, filePath)) {
+    throw httpError(403, `Static drill path must be inside ${rootLabel}.`)
   }
 
   if (getModelType(filePath) !== 'stl') {

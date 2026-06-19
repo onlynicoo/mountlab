@@ -1,15 +1,8 @@
 import fs from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { fileURLToPath } from 'node:url'
 import { httpError } from './errors.js'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const projectRoot = path.resolve(__dirname, '..', '..')
-const workspaceRoot = path.join(os.tmpdir(), 'mountlab-workspaces')
-const savedProjectsRoot = path.join(projectRoot, 'public', 'projects')
+import { savedProjectsRoot, workspaceRoot } from './appPaths.js'
 
 function slugForName(name) {
   return String(name || 'mountlab-project')

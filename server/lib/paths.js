@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { httpError } from './errors.js'
+import { appDataDir } from './appPaths.js'
 
 const MODEL_EXTENSIONS = new Map([
   ['.stl', 'stl'],
@@ -17,7 +18,8 @@ const CONTENT_TYPES = {
   step: 'model/step',
 }
 
-const allowedDirs = (process.env.ALLOWED_DIRS || '')
+const allowedDirSource = process.env.ALLOWED_DIRS || appDataDir || ''
+const allowedDirs = allowedDirSource
   .split(',')
   .map((entry) => entry.trim())
   .filter(Boolean)
