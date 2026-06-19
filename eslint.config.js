@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default [
-  { ignores: ['dist', 'server/converted', 'server/positions.json'] },
+  { ignores: ['dist', 'release', 'out', 'server/converted', 'server/positions.json'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
@@ -39,7 +39,7 @@ export default [
     },
   },
   {
-    files: ['server/**/*.js'],
+    files: ['server/**/*.js', 'electron/**/*.js'],
     languageOptions: {
       globals: globals.node,
     },
