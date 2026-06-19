@@ -14,6 +14,7 @@ const CONTENT_TYPES = {
   stl: 'model/stl',
   gltf: 'model/gltf+json',
   glb: 'model/gltf-binary',
+  step: 'model/step',
 }
 
 const allowedDirs = (process.env.ALLOWED_DIRS || '')

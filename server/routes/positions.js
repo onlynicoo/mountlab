@@ -50,7 +50,7 @@ const DEFAULT_CHASSIS_COMPONENTS = [
 ]
 
 const EMPTY_POSITIONS = {
-  assemblyMeta: { units: 'mm', dimensions: null },
+  assemblyMeta: { units: 'mm', dimensions: null, project: null, chassisSpec: null },
   chassisComponents: DEFAULT_CHASSIS_COMPONENTS,
   pcbs: [],
   assemblyObjects: [],
@@ -119,6 +119,22 @@ function normalizeAssemblyMeta(meta) {
   return {
     units: typeof meta?.units === 'string' ? meta.units : 'mm',
     dimensions: normalizeDimensions(meta?.dimensions),
+    project: meta?.project && typeof meta.project === 'object'
+      ? {
+        name: String(meta.project.name || 'Untitled rack project'),
+        slug: String(meta.project.slug || meta.project.name || 'untitled-rack-project'),
+        version: Number.isFinite(Number(meta.project.version)) ? Number(meta.project.version) : 1,
+        createdAt: typeof meta.project.createdAt === 'string'
+          ? meta.project.createdAt
+          : new Date().toISOString(),
+        updatedAt: typeof meta.project.updatedAt === 'string'
+          ? meta.project.updatedAt
+          : new Date().toISOString(),
+      }
+      : null,
+    chassisSpec: meta?.chassisSpec && typeof meta.chassisSpec === 'object'
+      ? meta.chassisSpec
+      : null,
   }
 }
 
@@ -127,11 +143,23 @@ function normalizeChassisComponents(components) {
 
   return components.map((component) => {
     const defaultComponent = DEFAULT_CHASSIS_COMPONENTS.find((candidate) => candidate.id === component.id)
+    const isGenerated = Boolean(component.generated)
     return {
       ...(defaultComponent || {}),
       id: String(component.id || defaultComponent?.id || crypto.randomUUID?.() || Date.now()),
       label: String(component.label || defaultComponent?.label || 'Chassis Component'),
-      path: String(component.path || defaultComponent?.path || ''),
+      path: isGenerated ? null : String(component.path || defaultComponent?.path || ''),
+      sourcePath: isGenerated
+        ? null
+        : typeof component.sourcePath === 'string'
+          ? component.sourcePath
+          : null,
+      drilledPath: typeof component.drilledPath === 'string' ? component.drilledPath : null,
+      drillState: typeof component.drillState === 'string'
+        ? component.drillState
+        : isGenerated ? 'generated' : 'source',
+      drilledAt: typeof component.drilledAt === 'string' ? component.drilledAt : null,
+      generated: isGenerated ? component.generated : null,
       visible: typeof component.visible === 'boolean'
         ? component.visible
         : defaultComponent?.visible ?? true,
@@ -187,6 +215,9 @@ function normalizeAssemblyObjects(objects, chassisComponents, assemblyMeta = nul
       normal: normalizeTransform(object.normal, placement.normal),
       visible: typeof object.visible === 'boolean' ? object.visible : true,
       locked: Boolean(object.locked),
+      source: typeof object.source === 'string' ? object.source : 'manual',
+      status: typeof object.status === 'string' ? object.status : 'editable',
+      sourcePath: typeof object.sourcePath === 'string' ? object.sourcePath : null,
       material: {
         color: typeof object.material?.color === 'string'
           ? object.material.color
