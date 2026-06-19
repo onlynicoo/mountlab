@@ -42,7 +42,14 @@ function constrainedToPanel(position, rotation, object) {
   return { position: nextPosition, rotation: nextRotation }
 }
 
-function ParametricObjectMesh({ object, selected, hovered }) {
+function holeGuideColors(guideState, selected, hovered) {
+  if (selected || hovered) return { ring: '#35ff9a', fill: '#02140b' }
+  if (guideState === 'dirty') return { ring: '#f59e0b', fill: '#1f1300' }
+  if (guideState === 'applied') return { ring: '#60a5fa', fill: '#020617' }
+  return { ring: '#d1d5db', fill: '#020202' }
+}
+
+function ParametricObjectMesh({ object, selected, hovered, guideState }) {
   const opacity = opacityFromTransparency(object.transparency)
   const material = useMemo(() => {
     const nextMaterial = new THREE.MeshStandardMaterial({
@@ -64,18 +71,40 @@ function ParametricObjectMesh({ object, selected, hovered }) {
 
   const diameter = Math.max(Number(object.params?.diameter) || 10, 0.1)
   const depth = Math.max(Number(object.params?.depth) || 3, 0.1)
+  const skirtDiameter = Math.max(Number(object.params?.skirtDiameter) || diameter * 1.16, diameter)
+  const pointerLength = Math.max(Number(object.params?.pointerLength) || diameter * 0.44, 0.1)
+  const pointerColor = object.params?.pointerColor || '#f4f1de'
   const width = Math.max(Number(object.params?.width) || diameter, 0.1)
   const height = Math.max(Number(object.params?.height) || diameter, 0.1)
 
   if (object.class === 'knob') {
     return (
       <group>
-        <mesh material={material} castShadow receiveShadow rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[diameter / 2, diameter / 2, depth, 48]} />
+        <mesh
+          material={material}
+          castShadow
+          receiveShadow
+          position={[0, 0, 0.5]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[skirtDiameter / 2, skirtDiameter / 2, 1, 72]} />
         </mesh>
-        <mesh position={[0, 0, depth / 2 + 0.4]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[diameter * 0.08, diameter * 0.08, 0.8, 24]} />
-          <meshStandardMaterial color="#f4f1de" roughness={0.45} metalness={0.1} />
+        <mesh
+          material={material}
+          castShadow
+          receiveShadow
+          position={[0, 0, 1 + depth / 2]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[diameter / 2, diameter / 2, depth, 96]} />
+        </mesh>
+        <mesh position={[0, pointerLength * 0.22, depth + 1.08]} castShadow>
+          <boxGeometry args={[Math.max(diameter * 0.08, 0.7), pointerLength, 0.36]} />
+          <meshStandardMaterial color={pointerColor} roughness={0.3} metalness={0.05} />
+        </mesh>
+        <mesh position={[0, 0, depth + 1.24]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[Math.max(diameter * 0.08, 0.7), Math.max(diameter * 0.08, 0.7), 0.28, 24]} />
+          <meshStandardMaterial color={pointerColor} roughness={0.3} metalness={0.05} />
         </mesh>
       </group>
     )
@@ -89,14 +118,18 @@ function ParametricObjectMesh({ object, selected, hovered }) {
     )
   }
 
+  const colors = holeGuideColors(guideState, selected, hovered)
+
   return (
     <group>
       <mesh position={[0, 0, 0.08]} renderOrder={20}>
         <circleGeometry args={[diameter / 2, 64]} />
         <meshStandardMaterial
-          color="#020202"
+          color={colors.fill}
           roughness={0.82}
           metalness={0.05}
+          transparent
+          opacity={guideState === 'applied' ? 0.28 : 0.48}
           polygonOffset
           polygonOffsetFactor={-8}
           polygonOffsetUnits={-8}
@@ -106,7 +139,7 @@ function ParametricObjectMesh({ object, selected, hovered }) {
       <mesh position={[0, 0, 0.12]} renderOrder={21}>
         <torusGeometry args={[diameter / 2, Math.max(diameter * 0.035, 0.2), 12, 64]} />
         <meshStandardMaterial
-          color={selected || hovered ? '#35ff9a' : '#d1d5db'}
+          color={colors.ring}
           roughness={0.35}
           metalness={0.2}
         />
@@ -126,6 +159,7 @@ function AssemblyObjectContent({
   onPanelDragMove,
   onPanelDragEnd,
   groupRef,
+  guideState,
 }) {
   if (!object.visible) return null
 
@@ -136,11 +170,10 @@ function AssemblyObjectContent({
       rotation={object.rotation}
       onClick={(event) => {
         event.stopPropagation()
-        onSelect(object.id)
       }}
       onPointerDown={(event) => {
         event.stopPropagation()
-        onSelect(object.id)
+        onSelect(object.id, event)
         onPanelDragStart(event)
       }}
       onPointerMove={(event) => {
@@ -163,7 +196,12 @@ function AssemblyObjectContent({
         onTransformChange()
       }}
     >
-      <ParametricObjectMesh object={object} selected={selected} hovered={hovered} />
+      <ParametricObjectMesh
+        object={object}
+        selected={selected}
+        hovered={hovered}
+        guideState={guideState}
+      />
     </group>
   )
 }
@@ -171,10 +209,12 @@ function AssemblyObjectContent({
 export default function AssemblyObject({
   object,
   selected,
+  active = selected,
   mode,
   onSelect,
   onPositionChange,
   onTransformActiveChange,
+  guideState = 'draft',
 }) {
   const groupRef = useRef()
   const dragStateRef = useRef(null)
@@ -291,13 +331,14 @@ export default function AssemblyObject({
       onPanelDragMove={movePanelDrag}
       onPanelDragEnd={endPanelDrag}
       groupRef={setObjectGroup}
+      guideState={guideState}
     />
   )
 
   return (
     <>
       {content}
-      {selected && controlTarget && (
+      {active && controlTarget && (
         <TransformControls
           object={controlTarget}
           mode={mode}

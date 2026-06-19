@@ -9,6 +9,7 @@ import * as THREE from 'three'
 import ChassisAssembly from './ChassisAssembly'
 import DraggablePCB from './DraggablePCB'
 import AssemblyObject from './AssemblyObject'
+import { ASSEMBLY_OBJECT_CLASSES } from '../config/assemblyObjects'
 
 function LoadingFallback() {
   return (
@@ -27,32 +28,263 @@ const VIEW_DIRECTIONS = {
   top: new THREE.Vector3(0, 1, 0),
 }
 
-function ControlsBar({ onCommand }) {
-  const buttons = [
-    ['fit', 'Fit'],
-    ['zoom_out', '- Zoom'],
-    ['zoom_in', '+ Zoom'],
-    ['pan_left', 'Left 1cm'],
-    ['pan_right', 'Right 1cm'],
-    ['view_front', 'Front'],
-    ['view_back', 'Back'],
-    ['view_left', 'Left side'],
-    ['view_right', 'Right side'],
-    ['view_top', 'Top'],
-  ]
+function EyeIcon({ visible }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+    >
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="2.5" />
+      {!visible && <path d="M4 20 20 4" />}
+    </svg>
+  )
+}
+
+function TriangleIcon({ expanded }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+      fill="currentColor"
+    >
+      <path d="M6 3.75 11 8l-5 4.25V3.75Z" />
+    </svg>
+  )
+}
+
+function VisibilityToggle({ visible, label, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={`${visible ? 'Hide' : 'Show'} ${label}`}
+      aria-label={`${visible ? 'Hide' : 'Show'} ${label}`}
+      aria-pressed={visible}
+      className={`grid h-7 w-7 shrink-0 place-items-center rounded border transition ${
+        visible
+          ? 'border-emerald-600/70 bg-emerald-950/60 text-emerald-200 hover:border-emerald-400'
+          : 'border-neutral-700 bg-neutral-950 text-neutral-500 hover:border-neutral-500 hover:text-neutral-200'
+      }`}
+    >
+      <EyeIcon visible={visible} />
+    </button>
+  )
+}
+
+function objectTypeLabel(type) {
+  if (!type) return ''
+  return type.slice(0, 1).toUpperCase()
+}
+
+function objectClassLabel(objectClass) {
+  return objectClass.id === 'generic' ? 'Generic Component' : objectClass.label
+}
+
+function panelStatus(component, children) {
+  if (component.drillState === 'dirty') return { label: 'Needs bake', className: 'bg-amber-950/70 text-amber-200' }
+  if (component.drillState === 'drilled') return { label: 'Imported', className: 'bg-sky-950/70 text-sky-200' }
+  if (component.drillState === 'generated') return { label: 'Generated', className: 'bg-neutral-900 text-neutral-400' }
+  if (children.some((object) => object.source === 'detected')) {
+    return { label: 'Detected', className: 'bg-emerald-950/70 text-emerald-200' }
+  }
+  return { label: 'Source', className: 'bg-neutral-900 text-neutral-500' }
+}
+
+function objectStatus(object) {
+  if (object.status === 'edited') return { label: 'Edited', className: 'bg-amber-950/70 text-amber-200' }
+  if (object.source === 'detected') return { label: 'Detected', className: 'bg-emerald-950/70 text-emerald-200' }
+  return null
+}
+
+function SceneVisibilityPalette({
+  chassisComponents,
+  assemblyObjects,
+  selectedObjectIds = [],
+  activeHostId,
+  addAssemblyObject,
+  updateChassisComponent,
+  updateAssemblyObject,
+  selectAssemblyObject,
+  selectHost,
+}) {
+  const [collapsedPanels, setCollapsedPanels] = useState({})
+  const [openAddMenuId, setOpenAddMenuId] = useState(null)
+  const objectsByHost = useMemo(() => {
+    const grouped = new Map()
+    assemblyObjects.forEach((object) => {
+      const current = grouped.get(object.hostId) || []
+      current.push(object)
+      grouped.set(object.hostId, current)
+    })
+    return grouped
+  }, [assemblyObjects])
+
+  const togglePanel = (componentId) => {
+    setCollapsedPanels((current) => ({
+      ...current,
+      [componentId]: !current[componentId],
+    }))
+  }
 
   return (
-    <div className="absolute left-1/2 top-4 z-10 flex max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded border border-neutral-700 bg-neutral-950/90 p-2 shadow-2xl backdrop-blur">
-      {buttons.map(([command, label]) => (
-        <button
-          key={command}
-          type="button"
-          onClick={() => onCommand(command)}
-          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:border-amber-500 hover:bg-neutral-800"
-        >
-          {label}
-        </button>
-      ))}
+    <div className="absolute bottom-4 left-4 z-10 w-[246px] max-w-[calc(100%-2rem)] rounded border border-neutral-700 bg-neutral-950/90 p-2 text-neutral-100 shadow-2xl backdrop-blur">
+      <div className="mb-1 flex items-center justify-between gap-2 px-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+          Visibility
+        </p>
+        <span className="text-[10px] text-neutral-600">
+          {chassisComponents.length + assemblyObjects.length}
+        </span>
+      </div>
+
+      <div className="max-h-[34vh] space-y-1 overflow-y-auto pr-1">
+        {chassisComponents.map((component) => {
+          const children = objectsByHost.get(component.id) || []
+          const expanded = !collapsedPanels[component.id]
+          const addMenuOpen = openAddMenuId === component.id
+          const active = activeHostId === component.id
+          const status = panelStatus(component, children)
+
+          return (
+            <div key={component.id}>
+              <div className={`relative flex h-8 items-center gap-1 rounded px-1 transition ${
+                active ? 'bg-amber-950/35' : 'hover:bg-neutral-900/80'
+              }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => togglePanel(component.id)}
+                  className={`grid h-6 w-5 shrink-0 place-items-center rounded text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-200 ${
+                    children.length === 0 ? 'opacity-30' : ''
+                  }`}
+                  aria-label={`${expanded ? 'Collapse' : 'Expand'} ${component.label}`}
+                  aria-expanded={expanded}
+                  disabled={children.length === 0}
+                >
+                  <TriangleIcon expanded={expanded} />
+                </button>
+                <VisibilityToggle
+                  visible={component.visible}
+                  label={component.label}
+                  onToggle={() => updateChassisComponent(component.id, {
+                    visible: !component.visible,
+                  })}
+                />
+                <button
+                  type="button"
+                  onClick={() => selectHost(component.id)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className={`block truncate text-xs ${
+                    active ? 'text-amber-100' : 'text-neutral-200'
+                  }`}
+                  >
+                    {component.label}
+                  </span>
+                </button>
+                {children.length > 0 && (
+                  <span className="rounded bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-500">
+                    {children.length}
+                  </span>
+                )}
+                <span className={`hidden rounded px-1.5 py-0.5 text-[10px] sm:inline ${status.className}`}>
+                  {status.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectHost(component.id)
+                    setOpenAddMenuId(addMenuOpen ? null : component.id)
+                  }}
+                  title={`Add component to ${component.label}`}
+                  aria-label={`Add component to ${component.label}`}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded border border-neutral-700 bg-neutral-900 text-sm font-semibold leading-none text-neutral-200 transition hover:border-amber-500 hover:bg-neutral-800 hover:text-amber-200"
+                >
+                  +
+                </button>
+
+                {addMenuOpen && (
+                  <div className="absolute right-0 top-8 z-30 w-36 overflow-hidden rounded border border-neutral-700 bg-neutral-950 shadow-2xl">
+                    {ASSEMBLY_OBJECT_CLASSES.map((objectClass) => (
+                      <button
+                        key={objectClass.id}
+                        type="button"
+                        onClick={() => {
+                          selectHost(component.id)
+                          addAssemblyObject(objectClass.id, component.id)
+                          setCollapsedPanels((current) => ({
+                            ...current,
+                            [component.id]: false,
+                          }))
+                          setOpenAddMenuId(null)
+                        }}
+                        className="block w-full px-3 py-2 text-left text-xs text-neutral-200 transition hover:bg-neutral-800 hover:text-amber-200"
+                      >
+                        {objectClassLabel(objectClass)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {expanded && children.length > 0 && (
+                <div className="ml-[17px] mt-1 space-y-1 border-l border-neutral-800 pl-2">
+                  {children.map((object) => {
+                    const status = objectStatus(object)
+
+                    return (
+                      <div
+                        key={object.id}
+                        className={`flex h-8 items-center gap-2 rounded px-1 transition ${
+                          selectedObjectIds.includes(object.id)
+                            ? 'bg-amber-950/40'
+                            : 'hover:bg-neutral-900/80'
+                        }`}
+                      >
+                        <VisibilityToggle
+                          visible={object.visible}
+                          label={object.label}
+                          onToggle={() => updateAssemblyObject(object.id, {
+                            visible: !object.visible,
+                          })}
+                        />
+                        <button
+                          type="button"
+                          onClick={(event) => selectAssemblyObject(object.id, event)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <span className="block truncate text-xs text-neutral-200">
+                            {object.label}
+                          </span>
+                        </button>
+                        {status && (
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] ${status.className}`}>
+                            {status.label}
+                          </span>
+                        )}
+                        <span
+                          className="grid h-5 w-5 shrink-0 place-items-center rounded bg-neutral-900 text-[10px] uppercase text-neutral-500"
+                          title={object.class}
+                        >
+                          {objectTypeLabel(object.class)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -163,10 +395,12 @@ function CameraRig({ command, contentRef, fitSignature }) {
 
 function SceneContents({
   chassisComponents,
+  assemblyMeta,
   pcbs,
   assemblyObjects,
   selectedPcbId,
   selectedObjectId,
+  selectedObjectIds = [],
   transformMode,
   selectPcb,
   selectAssemblyObject,
@@ -179,6 +413,7 @@ function SceneContents({
   const [transformActive, setTransformActive] = useState(false)
   const contentRef = useRef()
   const fitSignature = useMemo(() => JSON.stringify({
+    dimensions: assemblyMeta?.dimensions || null,
     chassis: chassisComponents.map((component) => ({
       id: component.id,
       path: component.path,
@@ -188,7 +423,7 @@ function SceneContents({
       id: pcb.id,
       url: pcb.url,
     })),
-  }), [chassisComponents, pcbs])
+  }), [assemblyMeta, chassisComponents, pcbs])
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -239,7 +474,10 @@ function SceneContents({
       />
 
       <group ref={contentRef}>
-        <ChassisAssembly components={chassisComponents} />
+        <ChassisAssembly
+          components={chassisComponents}
+          dimensions={assemblyMeta?.dimensions}
+        />
         {assemblyObjects.map((object) => {
           const hostComponent = chassisComponents.find((component) => component.id === object.hostId)
           return (
@@ -250,7 +488,17 @@ function SceneContents({
             >
               <AssemblyObject
                 object={object}
-                selected={selectedObjectId === object.id}
+                guideState={
+                  object.class !== 'hole'
+                    ? 'draft'
+                    : hostComponent?.drillState === 'dirty'
+                      ? 'dirty'
+                      : hostComponent?.drillState === 'drilled'
+                        ? 'applied'
+                        : 'draft'
+                }
+                selected={selectedObjectIds.includes(object.id)}
+                active={selectedObjectIds.length === 1 && selectedObjectId === object.id}
                 mode={transformMode}
                 onSelect={selectAssemblyObject}
                 onPositionChange={updateAssemblyObjectTransform}
@@ -277,26 +525,59 @@ function SceneContents({
 
 export default function Viewer3D({
   chassisComponents,
+  assemblyMeta,
   pcbs,
   assemblyObjects,
   selectedPcbId,
   selectedObjectId,
+  selectedObjectIds = [],
+  activeHostId,
   transformMode,
   selectPcb,
   selectAssemblyObject,
+  selectHost,
   clearSelection,
   updatePcbTransform,
   updateAssemblyObjectTransform,
+  addAssemblyObject,
+  updateChassisComponent,
+  updateAssemblyObject,
   toggleTransformMode,
+  externalCameraCommand = null,
 }) {
-  const [cameraCommand, setCameraCommand] = useState(null)
-  const sendCameraCommand = useCallback((type) => {
-    setCameraCommand({ type, timestamp: Date.now() })
-  }, [])
+  const dimensions = assemblyMeta?.dimensions
+  const projectName = assemblyMeta?.project?.name
 
   return (
     <div className="relative h-full min-h-[420px] w-full bg-[#080b0d]">
-      <ControlsBar onCommand={sendCameraCommand} />
+      {dimensions && (
+        <div className="absolute right-4 bottom-4 z-10 w-[236px] rounded border border-neutral-700 bg-neutral-950/90 p-3 text-neutral-100 shadow-2xl backdrop-blur">
+          <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-500">
+            {projectName || 'Rack chassis'}
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <span className="text-neutral-500">Width</span>
+            <span className="text-right text-neutral-200">{dimensions.width} mm</span>
+            <span className="text-neutral-500">Height</span>
+            <span className="text-right text-neutral-200">{dimensions.height} mm</span>
+            <span className="text-neutral-500">Depth</span>
+            <span className="text-right text-neutral-200">{dimensions.depth} mm</span>
+            <span className="text-neutral-500">Rack</span>
+            <span className="text-right text-neutral-200">{dimensions.rack_units || '-'}U</span>
+          </div>
+        </div>
+      )}
+      <SceneVisibilityPalette
+        chassisComponents={chassisComponents}
+        assemblyObjects={assemblyObjects}
+        selectedObjectIds={selectedObjectIds}
+        activeHostId={activeHostId}
+        updateChassisComponent={updateChassisComponent}
+        updateAssemblyObject={updateAssemblyObject}
+        selectAssemblyObject={selectAssemblyObject}
+        selectHost={selectHost}
+        addAssemblyObject={addAssemblyObject}
+      />
       <Canvas
         shadows
         camera={{ position: [0, 0.3, 0.8], fov: 45 }}
@@ -306,10 +587,12 @@ export default function Viewer3D({
         <Suspense fallback={<LoadingFallback />}>
           <SceneContents
             chassisComponents={chassisComponents}
+            assemblyMeta={assemblyMeta}
             pcbs={pcbs}
             assemblyObjects={assemblyObjects}
             selectedPcbId={selectedPcbId}
             selectedObjectId={selectedObjectId}
+            selectedObjectIds={selectedObjectIds}
             transformMode={transformMode}
             selectPcb={selectPcb}
             selectAssemblyObject={selectAssemblyObject}
@@ -317,7 +600,7 @@ export default function Viewer3D({
             updatePcbTransform={updatePcbTransform}
             updateAssemblyObjectTransform={updateAssemblyObjectTransform}
             toggleTransformMode={toggleTransformMode}
-            cameraCommand={cameraCommand}
+            cameraCommand={externalCameraCommand}
           />
         </Suspense>
       </Canvas>

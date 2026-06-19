@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 260" role="img" aria-labelledby="title desc">
+  <title id="title">Drilling loading animation</title>
+  <desc id="desc">Retro arcade bench drill press drilling a metal sheet with animated sparks and chips.</desc>
+  <style>
+    :root {
+      --bg: #1A1A2E;
+      --ink: #070817;
+      --cyan: #00FFAA;
+      --cyan-dark: #00A878;
+      --yellow: #FFD43B;
+      --orange: #FF6B1A;
+      --metal: #9AA6B2;
+      --metal-dark: #536173;
+      --white: #F8F7D8;
+    }
+
+    * {
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    .drill-head {
+      animation: press 1.05s steps(4, end) infinite;
+    }
+
+    .bit {
+      animation: bit-drop 1.05s steps(4, end) infinite;
+    }
+
+    .sparks {
+      opacity: 0;
+      animation: spark-burst 1.05s steps(2, end) infinite;
+    }
+
+    .spark-a { animation: fly-a 1.05s steps(3, end) infinite; }
+    .spark-b { animation: fly-b 1.05s steps(3, end) infinite; }
+    .spark-c { animation: fly-c 1.05s steps(3, end) infinite; }
+    .spark-d { animation: fly-d 1.05s steps(3, end) infinite; }
+
+    .chip {
+      opacity: 0;
+      animation-duration: 1.05s;
+      animation-timing-function: steps(4, end);
+      animation-iteration-count: infinite;
+    }
+
+    .chip-a { animation-name: chip-a; }
+    .chip-b { animation-name: chip-b; }
+    .chip-c { animation-name: chip-c; }
+    .chip-d { animation-name: chip-d; }
+
+    .hole {
+      animation: hole-pulse 1.05s steps(2, end) infinite;
+    }
+
+    .status-text {
+      animation: text-pop 1.05s steps(2, end) infinite;
+    }
+
+    @keyframes press {
+      0%, 22%, 100% { transform: translateY(0); }
+      42%, 72% { transform: translateY(18px); }
+    }
+
+    @keyframes bit-drop {
+      0%, 22%, 100% { transform: translateY(0); }
+      42%, 72% { transform: translateY(30px); }
+    }
+
+    @keyframes spark-burst {
+      0%, 38%, 100% { opacity: 0; }
+      44%, 70% { opacity: 1; }
+    }
+
+    @keyframes fly-a {
+      0%, 38%, 100% { transform: translate(0, 0); }
+      48%, 72% { transform: translate(-24px, -18px); }
+    }
+
+    @keyframes fly-b {
+      0%, 38%, 100% { transform: translate(0, 0); }
+      48%, 72% { transform: translate(24px, -20px); }
+    }
+
+    @keyframes fly-c {
+      0%, 38%, 100% { transform: translate(0, 0); }
+      48%, 72% { transform: translate(-34px, 5px); }
+    }
+
+    @keyframes fly-d {
+      0%, 38%, 100% { transform: translate(0, 0); }
+      48%, 72% { transform: translate(34px, 6px); }
+    }
+
+    @keyframes chip-a {
+      0%, 36%, 100% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+      46%, 68% { opacity: 1; transform: translate(-35px, -14px) rotate(-22deg); }
+    }
+
+    @keyframes chip-b {
+      0%, 39%, 100% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+      48%, 70% { opacity: 1; transform: translate(38px, -12px) rotate(18deg); }
+    }
+
+    @keyframes chip-c {
+      0%, 41%, 100% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+      50%, 72% { opacity: 1; transform: translate(-18px, 18px) rotate(34deg); }
+    }
+
+    @keyframes chip-d {
+      0%, 42%, 100% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+      50%, 72% { opacity: 1; transform: translate(22px, 18px) rotate(-36deg); }
+    }
+
+    @keyframes hole-pulse {
+      0%, 38%, 100% { transform: scaleX(0.7); opacity: 0.65; }
+      48%, 72% { transform: scaleX(1.15); opacity: 1; }
+    }
+
+    @keyframes text-pop {
+      0%, 100% { transform: translateY(0); }
+      48%, 72% { transform: translateY(2px); }
+    }
+  </style>
+
+  <rect width="680" height="260" fill="#1A1A2E"/>
+  <rect x="42" y="31" width="596" height="158" rx="10" fill="#111126" stroke="#2D2F55" stroke-width="6"/>
+  <rect x="58" y="47" width="564" height="126" fill="none" stroke="#25284C" stroke-width="3" stroke-dasharray="14 10"/>
+
+  <g transform="translate(213 27)" shape-rendering="crispEdges">
+    <rect x="88" y="29" width="28" height="114" fill="#00A878" stroke="#070817" stroke-width="6"/>
+    <rect x="72" y="25" width="60" height="16" fill="#FFD43B" stroke="#070817" stroke-width="6"/>
+    <rect x="75" y="139" width="132" height="18" fill="#00FFAA" stroke="#070817" stroke-width="6"/>
+    <rect x="48" y="157" width="244" height="22" fill="#FFD43B" stroke="#070817" stroke-width="6"/>
+
+    <g class="drill-head">
+      <rect x="101" y="12" width="118" height="46" fill="#00FFAA" stroke="#070817" stroke-width="6"/>
+      <rect x="219" y="21" width="31" height="28" fill="#FFD43B" stroke="#070817" stroke-width="6"/>
+      <rect x="112" y="22" width="72" height="10" fill="#F8F7D8"/>
+      <rect x="184" y="58" width="35" height="24" fill="#00A878" stroke="#070817" stroke-width="6"/>
+      <rect x="191" y="80" width="21" height="11" fill="#FFD43B" stroke="#070817" stroke-width="5"/>
+      <rect x="246" y="30" width="48" height="9" fill="#FF6B1A" stroke="#070817" stroke-width="5"/>
+      <rect x="287" y="21" width="17" height="27" fill="#FFD43B" stroke="#070817" stroke-width="5"/>
+    </g>
+
+    <g class="bit">
+      <path d="M202 87 L214 87 L211 134 L205 134 Z" fill="#F8F7D8" stroke="#070817" stroke-width="5" stroke-linejoin="miter"/>
+      <rect x="200" y="101" width="16" height="8" fill="#9AA6B2"/>
+      <rect x="201" y="118" width="14" height="7" fill="#536173"/>
+    </g>
+
+    <g transform="translate(118 143)">
+      <rect x="0" y="0" width="228" height="31" fill="#9AA6B2" stroke="#070817" stroke-width="6"/>
+      <rect x="11" y="8" width="61" height="6" fill="#F8F7D8"/>
+      <rect x="136" y="18" width="78" height="6" fill="#536173"/>
+      <ellipse class="hole" cx="91" cy="15" rx="11" ry="5" fill="#070817"/>
+      <ellipse cx="161" cy="15" rx="8" ry="4" fill="#536173"/>
+    </g>
+
+    <g class="sparks" transform="translate(209 157)" stroke-linecap="square">
+      <path class="spark-a" d="M0 0 L-19 -12" stroke="#FFD43B" stroke-width="6"/>
+      <path class="spark-b" d="M0 0 L18 -14" stroke="#FF6B1A" stroke-width="6"/>
+      <path class="spark-c" d="M0 0 L-24 4" stroke="#FF6B1A" stroke-width="5"/>
+      <path class="spark-d" d="M0 0 L25 5" stroke="#FFD43B" stroke-width="5"/>
+    </g>
+
+    <g transform="translate(209 157)" fill="#F8F7D8" stroke="#070817" stroke-width="3">
+      <rect class="chip chip-a" x="-5" y="-5" width="10" height="6"/>
+      <rect class="chip chip-b" x="-4" y="-4" width="9" height="7"/>
+      <rect class="chip chip-c" x="-4" y="-3" width="8" height="6"/>
+      <rect class="chip chip-d" x="-3" y="-4" width="8" height="7"/>
+    </g>
+  </g>
+
+  <g class="status-text" aria-hidden="true">
+    <text x="340" y="226"
+      text-anchor="middle"
+      font-family="'Courier New', 'Lucida Console', Monaco, monospace"
+      font-size="34"
+      font-weight="900"
+      letter-spacing="0"
+      fill="#FFD43B"
+      stroke="#070817"
+      stroke-width="5"
+      paint-order="stroke fill">DRILLING...</text>
+    <text x="340" y="226"
+      text-anchor="middle"
+      font-family="'Courier New', 'Lucida Console', Monaco, monospace"
+      font-size="34"
+      font-weight="900"
+      letter-spacing="0"
+      fill="#FFD43B">DRILLING...</text>
+  </g>
+</svg>
