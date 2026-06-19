@@ -393,6 +393,17 @@ function CameraRig({ command, contentRef, fitSignature }) {
   return null
 }
 
+function ViewportRefBridge({ cameraRef, glRef }) {
+  const { camera, gl } = useThree()
+
+  useEffect(() => {
+    cameraRef.current = camera
+    glRef.current = gl
+  }, [camera, gl, cameraRef, glRef])
+
+  return null
+}
+
 function SceneContents({
   chassisComponents,
   assemblyMeta,
@@ -402,6 +413,7 @@ function SceneContents({
   selectedObjectId,
   selectedObjectIds = [],
   transformMode,
+  disableOrbit = false,
   selectPcb,
   selectAssemblyObject,
   clearSelection,
@@ -454,7 +466,7 @@ function SceneContents({
       <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={2} blur={2} />
       <OrbitControls
         makeDefault
-        enabled={!transformActive}
+        enabled={!transformActive && !disableOrbit}
         enableDamping
         dampingFactor={0.08}
         enablePan
@@ -498,7 +510,7 @@ function SceneContents({
                         : 'draft'
                 }
                 selected={selectedObjectIds.includes(object.id)}
-                active={selectedObjectIds.length === 1 && selectedObjectId === object.id}
+                active={selectedObjectId === object.id}
                 mode={transformMode}
                 onSelect={selectAssemblyObject}
                 onPositionChange={updateAssemblyObjectTransform}
@@ -535,6 +547,7 @@ export default function Viewer3D({
   transformMode,
   selectPcb,
   selectAssemblyObject,
+  selectAssemblyObjects,
   selectHost,
   clearSelection,
   updatePcbTransform,
@@ -548,8 +561,115 @@ export default function Viewer3D({
   const dimensions = assemblyMeta?.dimensions
   const projectName = assemblyMeta?.project?.name
 
+  const cameraRef = useRef()
+  const glRef = useRef()
+  const marqueeStartRef = useRef(null)
+  const marqueeActiveRef = useRef(false)
+  const [marquee, setMarquee] = useState(null)
+  const [altActive, setAltActive] = useState(false)
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Alt') setAltActive(true)
+    }
+    const onKeyUp = (event) => {
+      if (event.key === 'Alt') setAltActive(false)
+    }
+    const onBlur = () => setAltActive(false)
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
+
+  const beginMarquee = (event) => {
+    if (event.button !== 0 || !event.altKey) return
+    const canvas = glRef.current?.domElement
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = event.clientX - rect.left
+    const y = event.clientY - rect.top
+    marqueeStartRef.current = { x, y, rect, additive: event.shiftKey }
+    marqueeActiveRef.current = true
+    setMarquee({ x0: x, y0: y, x1: x, y1: y })
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const moveMarquee = (event) => {
+    const start = marqueeStartRef.current
+    if (!start) return
+    setMarquee({
+      x0: start.x,
+      y0: start.y,
+      x1: event.clientX - start.rect.left,
+      y1: event.clientY - start.rect.top,
+    })
+  }
+
+  const endMarquee = (event) => {
+    const start = marqueeStartRef.current
+    if (!start) return
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    marqueeStartRef.current = null
+    setMarquee(null)
+
+    const { rect } = start
+    const x1 = event.clientX - rect.left
+    const y1 = event.clientY - rect.top
+    const minX = Math.min(start.x, x1)
+    const maxX = Math.max(start.x, x1)
+    const minY = Math.min(start.y, y1)
+    const maxY = Math.max(start.y, y1)
+    const camera = cameraRef.current
+    const dragged = (maxX - minX) > 3 || (maxY - minY) > 3
+
+    if (camera && dragged) {
+      const point = new THREE.Vector3()
+      const matched = assemblyObjects.filter((object) => {
+        if (object.visible === false) return false
+        const host = chassisComponents.find((component) => component.id === object.hostId)
+        point.set(...(object.position || [0, 0, 0]))
+        if (host) {
+          point.applyEuler(new THREE.Euler(...(host.rotation || [0, 0, 0])))
+          point.add(new THREE.Vector3(...(host.position || [0, 0, 0])))
+        }
+        point.project(camera)
+        if (point.z < -1 || point.z > 1) return false
+        const screenX = (point.x * 0.5 + 0.5) * rect.width
+        const screenY = (-point.y * 0.5 + 0.5) * rect.height
+        return screenX >= minX && screenX <= maxX && screenY >= minY && screenY <= maxY
+      }).map((object) => object.id)
+
+      if (matched.length > 0) {
+        selectAssemblyObjects?.(matched, { additive: start.additive })
+      } else if (!start.additive) {
+        clearSelection()
+      }
+    }
+
+    // Keep the flag set until after the Canvas onPointerMissed fires so a
+    // marquee drag does not also clear the freshly made selection.
+    setTimeout(() => {
+      marqueeActiveRef.current = false
+    }, 0)
+  }
+
+  const disableOrbit = altActive || Boolean(marquee)
+
   return (
-    <div className="relative h-full min-h-[420px] w-full bg-[#080b0d]">
+    <div
+      className={`relative h-full min-h-[420px] w-full bg-[#080b0d] ${altActive ? 'cursor-crosshair' : ''}`}
+      onPointerDown={beginMarquee}
+      onPointerMove={moveMarquee}
+      onPointerUp={endMarquee}
+      onPointerCancel={endMarquee}
+    >
       {dimensions && (
         <div className="absolute right-4 bottom-4 z-10 w-[236px] rounded border border-neutral-700 bg-neutral-950/90 p-3 text-neutral-100 shadow-2xl backdrop-blur">
           <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-500">
@@ -578,12 +698,26 @@ export default function Viewer3D({
         selectHost={selectHost}
         addAssemblyObject={addAssemblyObject}
       />
+      {marquee && (
+        <div
+          className="pointer-events-none absolute z-20 rounded-sm border border-amber-400/80 bg-amber-400/10"
+          style={{
+            left: Math.min(marquee.x0, marquee.x1),
+            top: Math.min(marquee.y0, marquee.y1),
+            width: Math.abs(marquee.x1 - marquee.x0),
+            height: Math.abs(marquee.y1 - marquee.y0),
+          }}
+        />
+      )}
       <Canvas
         shadows
         camera={{ position: [0, 0.3, 0.8], fov: 45 }}
         gl={{ antialias: true }}
-        onPointerMissed={() => clearSelection()}
+        onPointerMissed={() => {
+          if (!marqueeActiveRef.current) clearSelection()
+        }}
       >
+        <ViewportRefBridge cameraRef={cameraRef} glRef={glRef} />
         <Suspense fallback={<LoadingFallback />}>
           <SceneContents
             chassisComponents={chassisComponents}
@@ -594,6 +728,7 @@ export default function Viewer3D({
             selectedObjectId={selectedObjectId}
             selectedObjectIds={selectedObjectIds}
             transformMode={transformMode}
+            disableOrbit={disableOrbit}
             selectPcb={selectPcb}
             selectAssemblyObject={selectAssemblyObject}
             clearSelection={clearSelection}

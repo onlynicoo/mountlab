@@ -261,7 +261,7 @@ function ExportDialog({ open, panels, onClose }) {
       .flatMap((panel) => [...formats].map((format) => ({
         id: panel.id,
         label: panel.label,
-        path: panel.path,
+        path: panel.drilledPath || panel.sourcePath || panel.path,
         format,
       })))
 
@@ -1361,6 +1361,23 @@ function ComponentSettings({
           {component.count} hole{component.count === 1 ? '' : 's'} selected for mounting.
         </div>
 
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <NumberField
+            label="X"
+            value={component.panelPosition?.x ?? 0}
+            min={-10000}
+            step={0.1}
+            onChange={(value) => onPositionChange(0, value)}
+          />
+          <NumberField
+            label="Y"
+            value={component.panelPosition?.y ?? 0}
+            min={-10000}
+            step={0.1}
+            onChange={(value) => onPositionChange(1, value)}
+          />
+        </div>
+
         <button
           type="button"
           onClick={onMount}
@@ -1623,6 +1640,7 @@ export default function App() {
       label: `${selectedHoleObjects.length} holes selected`,
       count: selectedHoleObjects.length,
       hostSummary: [...new Set(selectedHoleObjects.map((object) => object.hostId))].join(', '),
+      panelPosition: selectedObject ? objectToPanelPosition(selectedObject) : { x: 0, y: 0 },
     }
     : selectedPcb
     ? {
@@ -1704,6 +1722,55 @@ export default function App() {
       setMountDialogOpen(false)
     }
   }, [isMultiHoleSelection, mountDialogOpen])
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (isTypingTarget(event.target)) return
+
+      const meta = event.metaKey || event.ctrlKey
+      const key = event.key.toLowerCase()
+
+      if (meta && key === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) assembly.redo()
+        else assembly.undo()
+        return
+      }
+
+      if (meta && key === 'y') {
+        event.preventDefault()
+        assembly.redo()
+        return
+      }
+
+      if (meta && key === 'c') {
+        if (assembly.copySelection().length > 0) event.preventDefault()
+        return
+      }
+
+      if (meta && key === 'x') {
+        if (assembly.cutSelection().length > 0) event.preventDefault()
+        return
+      }
+
+      if (meta && key === 'v') {
+        if (assembly.pasteClipboard().length > 0) event.preventDefault()
+        return
+      }
+
+      if (meta && key === 'd') {
+        if (assembly.duplicateSelection().length > 0) event.preventDefault()
+        return
+      }
+
+      if (key === 'delete' || key === 'backspace') {
+        if (assembly.deleteSelection().length > 0) event.preventDefault()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [assembly])
 
   const isBaking = assembly.drillingStatus.componentId === activeHost?.id
     && assembly.drillingStatus.state === 'loading'
@@ -1855,6 +1922,7 @@ export default function App() {
             transformMode={assembly.transformMode}
             selectPcb={assembly.selectPcb}
             selectAssemblyObject={selectObject}
+            selectAssemblyObjects={assembly.selectAssemblyObjects}
             selectHost={selectHost}
             clearSelection={assembly.clearSelection}
             updatePcbTransform={assembly.updatePcbTransform}

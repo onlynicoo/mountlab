@@ -174,6 +174,30 @@ function objectIdFor(label = 'object') {
   return `${label.toLowerCase().replace(/[^a-z0-9]+/g, '_')}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+const PASTE_OFFSET_MM = 5
+const OBJECT_HISTORY_LIMIT = 50
+
+function clonePastedObject(object, availableHostIds, offset = PASTE_OFFSET_MM) {
+  const hostId = availableHostIds.includes(object.hostId) ? object.hostId : DEFAULT_OBJECT_HOST_ID
+  const position = [...(object.position || [0, 0, 0])]
+  position[0] += object.hostId === 'back_panel' ? -offset : offset
+  position[1] -= offset
+
+  return {
+    ...object,
+    id: objectIdFor(object.label || object.class),
+    hostId,
+    label: `${object.label || 'Object'} copy`,
+    position,
+    rotation: [...(object.rotation || [0, 0, 0])],
+    normal: [...(object.normal || [0, 0, 1])],
+    material: { ...object.material },
+    params: { ...object.params },
+    source: 'manual',
+    status: 'editable',
+  }
+}
+
 function slugForProjectName(name) {
   return String(name || 'untitled-rack-project')
     .trim()
@@ -395,12 +419,14 @@ function createStaticPcb(filePath) {
   const extension = extensionFor(filePath)
   const type = DIRECT_TYPES.get(extension)
   if (!type) return null
+  const isPublicPath = filePath.startsWith('/projects/') || filePath.startsWith('/models/')
+  const baseUrl = isPublicPath ? filePath : directModelUrl(filePath, type)
 
   return {
     id: pcbIdFor(filePath),
     path: filePath,
-    baseUrl: filePath,
-    url: versionedUrl(filePath),
+    baseUrl,
+    url: versionedUrl(baseUrl),
     type,
     color: DEFAULT_PCB_COLOR,
     transparency: DEFAULT_PCB_TRANSPARENCY,
@@ -419,11 +445,14 @@ function createImportedChassisComponent(filePath) {
 function createImportedChassisComponentForHost(filePath, hostId) {
   const definition = CHASSIS_PART_DEFINITIONS.find((candidate) => candidate.id === hostId)
   if (!definition) return null
+  const renderPath = filePath.startsWith('/projects/') || filePath.startsWith('/models/')
+    ? filePath
+    : versionedUrl(directModelUrl(filePath, 'stl'))
 
   return {
     id: definition.id,
     label: definition.label,
-    path: filePath,
+    path: renderPath,
     sourcePath: filePath,
     drilledPath: null,
     drillState: 'source',
@@ -1045,13 +1074,13 @@ function applyManifestToChassis(components, manifest) {
   if (!manifest?.chassis) return components
 
   return components.map((component) => {
-    const fileName = basename(component.path)
+    const fileName = basename(component.sourcePath || component.path)
     const manifestComponent = manifest.chassis[fileName] || manifest.chassis[component.id]
     if (!manifestComponent) return component
 
     return {
       ...component,
-      sourcePath: manifestComponent.sourcePath || component.sourcePath || component.path,
+      sourcePath: component.sourcePath || manifestComponent.sourcePath || component.path,
       drilledPath: manifestComponent.drilledPath || component.drilledPath || null,
       drillState: manifestComponent.drillState || component.drillState || 'source',
       drilledAt: manifestComponent.drilledAt || component.drilledAt || null,
@@ -1120,12 +1149,69 @@ export function useAssembly() {
   const [drillingStatus, setDrillingStatus] = useState({ state: 'idle', message: '', componentId: null })
   const [importReview, setImportReview] = useState(null)
   const [workspace, setWorkspace] = useState(null)
+  const [clipboard, setClipboard] = useState([])
   const stateRef = useRef({ pcbs })
   const selectedObjectId = selectedObjectIds[selectedObjectIds.length - 1] || null
+
+  const objectHistoryRef = useRef({ past: [], future: [] })
+  const lastObjectsRef = useRef(assemblyObjects)
+  const skipObjectHistoryRef = useRef(false)
 
   useEffect(() => {
     stateRef.current = { pcbs }
   }, [pcbs])
+
+  // Track assemblyObjects changes for undo/redo. Changes driven by undo/redo
+  // itself (or by project-level resets) set skipObjectHistoryRef so they are
+  // not re-recorded.
+  useEffect(() => {
+    if (assemblyObjects === lastObjectsRef.current) return
+
+    if (skipObjectHistoryRef.current) {
+      skipObjectHistoryRef.current = false
+      lastObjectsRef.current = assemblyObjects
+      return
+    }
+
+    const history = objectHistoryRef.current
+    history.past.push(lastObjectsRef.current)
+    if (history.past.length > OBJECT_HISTORY_LIMIT) history.past.shift()
+    history.future = []
+    lastObjectsRef.current = assemblyObjects
+  }, [assemblyObjects])
+
+  const resetObjectHistory = useCallback(() => {
+    objectHistoryRef.current = { past: [], future: [] }
+    skipObjectHistoryRef.current = true
+  }, [])
+
+  const undo = useCallback(() => {
+    const history = objectHistoryRef.current
+    if (history.past.length === 0) return false
+
+    const previous = history.past.pop()
+    history.future.unshift(lastObjectsRef.current)
+    skipObjectHistoryRef.current = true
+    lastObjectsRef.current = previous
+    setAssemblyObjects(previous)
+    setSelectedObjectIds([])
+    setSelectedComponent(null)
+    return true
+  }, [])
+
+  const redo = useCallback(() => {
+    const history = objectHistoryRef.current
+    if (history.future.length === 0) return false
+
+    const next = history.future.shift()
+    history.past.push(lastObjectsRef.current)
+    skipObjectHistoryRef.current = true
+    lastObjectsRef.current = next
+    setAssemblyObjects(next)
+    setSelectedObjectIds([])
+    setSelectedComponent(null)
+    return true
+  }, [])
 
   const markPanelNeedsDrill = useCallback((componentId) => {
     if (!componentId) return
@@ -1182,6 +1268,7 @@ export function useAssembly() {
     }))
     setPcbs([])
     setAssemblyObjects([])
+    resetObjectHistory()
     setSelectedPcbId(null)
     setSelectedObjectIds([])
     setSelectedComponent(null)
@@ -1213,7 +1300,7 @@ export function useAssembly() {
     }
 
     return nextMeta
-  }, [])
+  }, [resetObjectHistory])
 
   const addPcb = useCallback(async (filePath, savedTransform = {}) => {
     const nextPath = filePath.trim()
@@ -1333,6 +1420,7 @@ export function useAssembly() {
       setChassisComponents(nextChassisWithDetectedHoles)
       setPcbs(nextPcbs)
       setAssemblyObjects(nextObjects)
+      resetObjectHistory()
       setSelectedPcbId(nextPcbs[0]?.id || null)
       setSelectedObjectIds([])
       setSelectedComponent(nextPcbs[0] ? { type: 'pcb', id: nextPcbs[0].id } : null)
@@ -1352,7 +1440,7 @@ export function useAssembly() {
       setPcbStatus({ state: 'error', message: error.message })
       setPersistenceStatus({ state: 'error', message: error.message })
     }
-  }, [])
+  }, [resetObjectHistory])
 
   const removePcb = useCallback((id) => {
     setPcbs((current) => current.filter((pcb) => pcb.id !== id))
@@ -1440,10 +1528,13 @@ export function useAssembly() {
     setSelectedPcbId(null)
     setSelectedObjectIds((current) => {
       const additive = Boolean(options.additive)
+      const preserveIfSelected = Boolean(options.preserveIfSelected)
       const next = additive
         ? current.includes(id)
           ? current.filter((objectId) => objectId !== id)
           : [...current, id]
+        : preserveIfSelected && current.includes(id)
+          ? [...current.filter((objectId) => objectId !== id), id]
         : [id]
       const nextPrimary = next[next.length - 1] || null
       setSelectedComponent(nextPrimary ? { type: 'object', id: nextPrimary } : null)
@@ -1451,11 +1542,94 @@ export function useAssembly() {
     })
   }, [])
 
+  const selectAssemblyObjects = useCallback((ids, options = {}) => {
+    const requested = Array.isArray(ids) ? ids : []
+    const validIds = assemblyObjects
+      .filter((object) => requested.includes(object.id))
+      .map((object) => object.id)
+
+    setSelectedPcbId(null)
+    setSelectedObjectIds((current) => {
+      const merged = options.additive ? [...current] : []
+      validIds.forEach((id) => {
+        if (!merged.includes(id)) merged.push(id)
+      })
+      const nextPrimary = merged[merged.length - 1] || null
+      setSelectedComponent(nextPrimary ? { type: 'object', id: nextPrimary } : null)
+      return merged
+    })
+  }, [assemblyObjects])
+
   const clearSelection = useCallback(() => {
     setSelectedPcbId(null)
     setSelectedObjectIds([])
     setSelectedComponent(null)
   }, [])
+
+  const addClonedObjects = useCallback((sources) => {
+    if (!Array.isArray(sources) || sources.length === 0) return []
+
+    const availableHostIds = chassisComponents.map((component) => component.id)
+    const pasted = sources.map((object) => clonePastedObject(object, availableHostIds))
+
+    setAssemblyObjects((current) => [...current, ...pasted])
+    pasted.forEach((object) => {
+      if (object.class === 'hole') markPanelNeedsDrill(object.hostId)
+    })
+    setSelectedPcbId(null)
+    setSelectedObjectIds(pasted.map((object) => object.id))
+    setSelectedComponent({ type: 'object', id: pasted[pasted.length - 1].id })
+    return pasted
+  }, [chassisComponents, markPanelNeedsDrill])
+
+  const copySelection = useCallback(() => {
+    const ids = new Set(selectedObjectIds)
+    const copied = assemblyObjects.filter((object) => ids.has(object.id))
+    if (copied.length === 0) return []
+
+    setClipboard(copied.map((object) => ({
+      ...object,
+      position: [...(object.position || [0, 0, 0])],
+      rotation: [...(object.rotation || [0, 0, 0])],
+      normal: [...(object.normal || [0, 0, 1])],
+      material: { ...object.material },
+      params: { ...object.params },
+    })))
+    return copied
+  }, [assemblyObjects, selectedObjectIds])
+
+  const deleteSelection = useCallback(() => {
+    const ids = selectedObjectIds
+    if (ids.length === 0) return []
+
+    const idSet = new Set(ids)
+    const removed = assemblyObjects.filter((object) => idSet.has(object.id))
+    if (removed.length === 0) return []
+
+    setAssemblyObjects((current) => current.filter((object) => !idSet.has(object.id)))
+    removed.forEach((object) => {
+      if (object.class === 'hole') markPanelNeedsDrill(object.hostId)
+    })
+    setSelectedObjectIds([])
+    setSelectedComponent((current) => (
+      current?.type === 'object' && idSet.has(current.id) ? null : current
+    ))
+    return removed
+  }, [assemblyObjects, markPanelNeedsDrill, selectedObjectIds])
+
+  const cutSelection = useCallback(() => {
+    const copied = copySelection()
+    if (copied.length > 0) deleteSelection()
+    return copied
+  }, [copySelection, deleteSelection])
+
+  const pasteClipboard = useCallback(() => addClonedObjects(clipboard), [addClonedObjects, clipboard])
+
+  const duplicateSelection = useCallback(() => {
+    const ids = new Set(selectedObjectIds)
+    const sources = assemblyObjects.filter((object) => ids.has(object.id))
+    return addClonedObjects(sources)
+  }, [addClonedObjects, assemblyObjects, selectedObjectIds])
 
   const mountObjectsOnHoles = useCallback((className, holeIds) => {
     const selectedHoleIds = new Set(holeIds || [])
@@ -1613,17 +1787,58 @@ export function useAssembly() {
 
   const updateAssemblyObjectTransform = useCallback((id, position, rotation) => {
     const object = assemblyObjects.find((candidate) => candidate.id === id)
-    setAssemblyObjects((current) => current.map((object) => (
-      object.id === id
-        ? {
-          ...object,
-          status: object.source === 'detected' ? 'edited' : object.status,
-          ...constrainObjectToPanelTransform(object, position, rotation),
+    if (!object) return
+
+    const selectedIds = new Set(selectedObjectIds)
+    const shouldMoveSelection = selectedIds.has(id) && selectedIds.size > 1
+    const dirtyHostIds = new Set(
+      assemblyObjects
+        .filter((candidate) => (
+          candidate.class === 'hole'
+          && (
+            candidate.id === id
+            || (shouldMoveSelection && selectedIds.has(candidate.id) && candidate.hostId === object.hostId)
+          )
+        ))
+        .map((candidate) => candidate.hostId),
+    )
+
+    setAssemblyObjects((current) => {
+      const currentPrimary = current.find((item) => item.id === id) || object
+      const constrainedPrimary = constrainObjectToPanelTransform(currentPrimary, position, rotation)
+      const delta = constrainedPrimary.position.map((value, index) => (
+        value - (currentPrimary.position?.[index] || 0)
+      ))
+
+      return current.map((candidate) => {
+        if (candidate.id === id) {
+          return {
+            ...candidate,
+            status: candidate.source === 'detected' ? 'edited' : candidate.status,
+            ...constrainedPrimary,
+          }
         }
-        : object
-    )))
-    if (object?.class === 'hole') markPanelNeedsDrill(object.hostId)
-  }, [assemblyObjects, markPanelNeedsDrill])
+
+        if (!shouldMoveSelection || !selectedIds.has(candidate.id) || candidate.hostId !== object.hostId) {
+          return candidate
+        }
+
+        const nextPosition = (candidate.position || [0, 0, 0]).map((value, index) => value + delta[index])
+        const constrained = constrainObjectToPanelTransform(
+          candidate,
+          nextPosition,
+          candidate.rotation || [0, 0, 0],
+        )
+
+        return {
+          ...candidate,
+          status: candidate.source === 'detected' ? 'edited' : candidate.status,
+          ...constrained,
+        }
+      })
+    })
+    dirtyHostIds.forEach(markPanelNeedsDrill)
+  }, [assemblyObjects, markPanelNeedsDrill, selectedObjectIds])
 
   const toggleTransformMode = useCallback(() => {
     setTransformMode((current) => (current === 'translate' ? 'rotate' : 'translate'))
@@ -1805,6 +2020,7 @@ export function useAssembly() {
         nextChassisComponents,
         nextAssemblyMeta,
       ))
+      resetObjectHistory()
 
       for (const pcb of payload.pcbs || []) {
         await addPcb(pcb.path, pcb)
@@ -1832,13 +2048,14 @@ export function useAssembly() {
     } catch (error) {
       setPersistenceStatus({ state: 'error', message: error.message })
     }
-  }, [addPcb])
+  }, [addPcb, resetObjectHistory])
 
   const reset = useCallback(() => {
     setChassisComponents(createDefaultChassisComponents())
     setAssemblyMeta(DEFAULT_ASSEMBLY_META)
     setPcbs([])
     setAssemblyObjects([])
+    resetObjectHistory()
     setSelectedPcbId(null)
     setSelectedObjectIds([])
     setSelectedComponent(null)
@@ -1848,7 +2065,7 @@ export function useAssembly() {
     setDrillingStatus({ state: 'idle', message: '', componentId: null })
     setImportReview(null)
     setWorkspace(null)
-  }, [])
+  }, [resetObjectHistory])
 
   const acceptImportReview = useCallback(() => {
     setImportReview(null)
@@ -1947,6 +2164,15 @@ export function useAssembly() {
     selectAssemblyObject,
     mountObjectsOnHoles,
     clearSelection,
+    selectAssemblyObjects,
+    copySelection,
+    cutSelection,
+    pasteClipboard,
+    duplicateSelection,
+    deleteSelection,
+    undo,
+    redo,
+    hasClipboard: clipboard.length > 0,
     setSelectedPcbId,
     setSelectedComponentColor,
     setSelectedComponentTransparency,

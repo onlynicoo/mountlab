@@ -42,6 +42,16 @@ function constrainedToPanel(position, rotation, object) {
   return { position: nextPosition, rotation: nextRotation }
 }
 
+function freeRotationAxisName(object) {
+  const normal = object.normal || [0, 0, 1]
+  const dominantAxis = normal
+    .map((value) => Math.abs(value))
+    .reduce((bestIndex, value, index, values) => (
+      value > values[bestIndex] ? index : bestIndex
+    ), 0)
+  return ['x', 'y', 'z'][dominantAxis]
+}
+
 function holeGuideColors(guideState, selected, hovered) {
   if (selected || hovered) return { ring: '#35ff9a', fill: '#02140b' }
   if (guideState === 'dirty') return { ring: '#f59e0b', fill: '#1f1300' }
@@ -154,7 +164,6 @@ function AssemblyObjectContent({
   hovered,
   onSelect,
   onHover,
-  onTransformChange,
   onPanelDragStart,
   onPanelDragMove,
   onPanelDragEnd,
@@ -172,8 +181,18 @@ function AssemblyObjectContent({
         event.stopPropagation()
       }}
       onPointerDown={(event) => {
+        // Alt+drag is reserved for the viewport marquee selection.
+        if (event.altKey) return
         event.stopPropagation()
-        onSelect(object.id, event)
+        const transformModifier = event.ctrlKey || event.metaKey || event.shiftKey
+        onSelect(object.id, {
+          additive: transformModifier && !selected,
+          preserveIfSelected: selected || transformModifier,
+          shiftKey: event.shiftKey,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          nativeEvent: event.nativeEvent,
+        })
         onPanelDragStart(event)
       }}
       onPointerMove={(event) => {
@@ -189,11 +208,9 @@ function AssemblyObjectContent({
       }}
       onPointerUp={(event) => {
         onPanelDragEnd(event)
-        onTransformChange()
       }}
       onPointerCancel={(event) => {
         onPanelDragEnd(event)
-        onTransformChange()
       }}
     >
       <ParametricObjectMesh
@@ -242,6 +259,12 @@ export default function AssemblyObject({
     )
   }
 
+  const dragMode = (event) => {
+    if (event.ctrlKey || event.metaKey) return 'translate'
+    if (event.shiftKey) return 'rotate'
+    return null
+  }
+
   const intersectPanelPlane = (event) => {
     if (!groupRef.current) return null
 
@@ -264,8 +287,14 @@ export default function AssemblyObject({
   }
 
   const startPanelDrag = (event) => {
-    if (!groupRef.current || event.button !== 0) return
+    // Plain drag (no modifier) leaves the camera free to orbit; transforms are
+    // explicit: Ctrl/Cmd+drag = move, Shift+drag = rotate.
+    if (!groupRef.current || event.button !== 0 || event.altKey) return
 
+    const mode = dragMode(event)
+    if (!mode) return
+
+    const axisName = freeRotationAxisName(object)
     const startHit = intersectPanelPlane({
       ...event,
       ray: event.ray,
@@ -273,22 +302,36 @@ export default function AssemblyObject({
 
     dragStateRef.current = {
       pointerId: event.pointerId,
+      mode,
+      moved: false,
+      axisName,
+      startClientX: event.nativeEvent?.clientX ?? 0,
+      startAngle: groupRef.current.rotation[axisName],
       startPosition: groupRef.current.position.clone(),
       dragOffset: groupRef.current.position.clone().sub(startHit),
     }
     event.target.setPointerCapture?.(event.pointerId)
-    gl.domElement.style.cursor = 'grabbing'
+    gl.domElement.style.cursor = mode === 'rotate' ? 'ew-resize' : 'grabbing'
     onTransformActiveChange(true)
   }
 
   const movePanelDrag = (event) => {
-    if (!dragStateRef.current || !groupRef.current) return
+    const drag = dragStateRef.current
+    if (!drag || !groupRef.current) return
     event.stopPropagation()
+    drag.moved = true
+
+    if (drag.mode === 'rotate') {
+      const clientX = event.nativeEvent?.clientX ?? drag.startClientX
+      groupRef.current.rotation[drag.axisName] = drag.startAngle + (clientX - drag.startClientX) * 0.01
+      commitTransform()
+      return
+    }
 
     const nextPosition = intersectPanelPlane(event)
     if (!nextPosition) return
 
-    nextPosition.add(dragStateRef.current.dragOffset)
+    nextPosition.add(drag.dragOffset)
 
     const constrained = constrainedToPanel(
       nextPosition,
@@ -296,9 +339,9 @@ export default function AssemblyObject({
       {
         ...object,
         position: [
-          dragStateRef.current.startPosition.x,
-          dragStateRef.current.startPosition.y,
-          dragStateRef.current.startPosition.z,
+          drag.startPosition.x,
+          drag.startPosition.y,
+          drag.startPosition.z,
         ],
       },
     )
@@ -309,14 +352,15 @@ export default function AssemblyObject({
   }
 
   const endPanelDrag = (event) => {
-    if (!dragStateRef.current) return
+    const drag = dragStateRef.current
+    if (!drag) return
 
     event.stopPropagation()
-    event.target.releasePointerCapture?.(dragStateRef.current.pointerId)
+    event.target.releasePointerCapture?.(drag.pointerId)
     dragStateRef.current = null
     gl.domElement.style.cursor = ''
     onTransformActiveChange(false)
-    commitTransform()
+    if (drag.moved) commitTransform()
   }
 
   const content = (
@@ -326,7 +370,6 @@ export default function AssemblyObject({
       hovered={hovered}
       onSelect={onSelect}
       onHover={setHovered}
-      onTransformChange={commitTransform}
       onPanelDragStart={startPanelDrag}
       onPanelDragMove={movePanelDrag}
       onPanelDragEnd={endPanelDrag}
